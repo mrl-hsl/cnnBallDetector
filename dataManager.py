@@ -6,9 +6,9 @@ import os
 import cv2
 import numpy as np
 
-dataset = tf.data.TFRecordDataset(['./dataSet/dataSet.tfrecords','./fineTune/images.tfrecords'])#,'./fineTune/images.tfrecords'
-# test_set = tf.data.TFRecordDataset(['./val/val1.tfrecords','./val/val2.tfrecords','./val/val3.tfrecords'])
-test_set = tf.data.TFRecordDataset(['./val/unseenBall.tfrecords'])
+dataset = tf.data.TFRecordDataset(['./dataSet/dataSet.tfrecords'])
+test_set = tf.data.TFRecordDataset(['./dataSet/val1.tfrecords','./dataSet/val2.tfrecords','./dataSet/val3.tfrecords'])
+#test_set = tf.data.TFRecordDataset(['./val/unseenBall.tfrecords'])
 def getBox(bbox,windowSize):
     x1 = int(bbox[0]*windowSize[0]) - int(bbox[2]*windowSize[0]/2)
     y1 = int(bbox[1]*windowSize[1]) - int(bbox[3]*windowSize[1]/2)
@@ -65,23 +65,14 @@ def _resize_data( image,label,ballX,ballY,ballW,ballH):
         # image = tf.image.per_image_standardization(image)
         return image,label,ballX,ballY,ballW,ballH
 
-def filterSmallBall(image,label,ballX,ballY,ballW,ballH):
-    return tf.logical_or(tf.greater(ballW,0.25),tf.equal(ballW,0.0))
-
 dataset = dataset.map(_parse_image_function)
 dataset = dataset.map(color)
-
 dataset = dataset.map(_resize_data)
-
-dataset = dataset.filter(filterSmallBall)
-
 dataset = dataset.shuffle(buffer_size=12000)
 
 test_set = test_set.map(_parse_image_function)
-# test_set = test_set.filter(filterSmallBall)
 test_set = test_set.map(_resize_data)
 # test_set = test_set.map(color)
-
 test_set = test_set.shuffle(buffer_size=2000)
 
 train_set = dataset
