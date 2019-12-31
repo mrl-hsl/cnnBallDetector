@@ -17,17 +17,15 @@ class teacher():
         self.isTraining = network.net.isTraning
         self.defaultBoxes = network.defaultBoxes
 
-        self.loc_loss_fn = tf.abs#self.abs_smooth
-        self.conf_loss_fn = tf.abs#self.abs_smooth
+        self.loc_loss_fn = tf.abs
+        self.conf_loss_fn = tf.abs
 
         self.negetiveBoxUsageRate = 3.0
         self.i = i
         self.bbox = tf.placeholder(tf.float32, [None, 4], name='bbox')
         self.label = tf.placeholder(tf.float32, [None, 2], name='label')
         self.global_step = tf.Variable(0, trainable=False, name='global_step')
-        # self.lrate = tf.train.polynomial_decay(0.005, self.global_step,500, 0.0005, power=0.9)
         self.lrate = tf.train.piecewise_constant(self.global_step, [5000,10000],[1e-3,1e-4,1e-5])
-        # self.lrate = tf.train.cosine_decay_restarts(1e-2,self.global_step, 10,alpha=0, t_mul=2.0, m_mul=1.0)
         tf.summary.scalar('lerning_rate',self.lrate)
 
         self.trainBatch = data.next_train_batch
@@ -38,10 +36,7 @@ class teacher():
 
         self.buildCostFunction()
         self.loss = tf.losses.get_total_loss()
-        # tf.summary.scalar('total_loss', self.loss)
         self.buildOptimizer()
-        # update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-        # self.train_op = tf.group([self.train_op, update_ops])
 
         self.buildPredector()
         self.buildMetrics()
@@ -84,15 +79,8 @@ class teacher():
             matchMask = tf.cast(tf.logical_or(bestMatchMask,goodMatchMask),tf.float32)
             
             posMatchMask = tf.transpose(tf.multiply(tf.transpose(matchMask), self.label[:, 1]))
-            # posMatchMask = tf.multiply(matchMask, tf.stack([self.label[:, 1],self.label[:, 1],self.label[:, 1]],axis=1))
-            # tf.summary.text('mask',tf.dtypes.as_string(posMatchMask))
-            # tf.summary.text('mask',tf.dtypes.as_string(self.label[:, 1]))
 
             return posMatchMask
-
-
-        # tf.summary.text('bestindex',tf.dtypes.as_string(bestMatchMask))
-        # tf.summary.text('good', tf.dtypes.as_string(goodMatchMask))
 
     def abs_smooth(self,x):
 
@@ -135,10 +123,6 @@ class teacher():
 
             loc = tf.reduce_sum(self.loc_loss_fn(tf.subtract(selectedPridictedBoxes, gBoxesInSelectedBoxes)))
 
-            # tf.summary.text('loc', tf.dtypes.as_string(loc))
-            # tf.summary.text('gBoxesInSelectedBoxes', tf.dtypes.as_string(gBoxesInSelectedBoxes))
-            # tf.summary.text('predBox', tf.dtypes.as_string(selectedPridictedBoxes))
-
             return loc 
 
     def calculate_confidence_loss(self,selectedBoxes,nSelectedBoxes,predicatedConf,predicatedBoxes,notSelectedBoxes, nNegetiveUsage):
@@ -179,22 +163,12 @@ class teacher():
 
             posLoss = tf.reduce_sum((self.conf_loss_fn(selectedPridictedConf-selectedPridictedIou)))
 
-            # batchSize = tf.shape(predicatedConf)[0];
-            # nDefaultBoxes = self.defaultBoxes.get_shape().as_list()[0]
-            # negetiveMask = tf.transpose(tf.multiply(tf.ones((nDefaultBoxes, batchSize)), self.label[:, 0]))
-            # negetiveBoxes = tf.where(negetiveMask)
-
             negConfs = tf.squeeze(tf.gather_nd(predicatedConf, notSelectedBoxes))
-            # tf.summary.text('negConfs', tf.dtypes.as_string(negConfs))
-            # tf.summary.text('labels', tf.dtypes.as_string(self.label))
-            # tf.summary.text('labels', tf.dtypes.as_string(nSelectedBoxes))
 
             topNegConfs, index = tf.nn.top_k(negConfs, nNegetiveUsage)
 
             negLoss = tf.reduce_sum(self.conf_loss_fn(topNegConfs))
 
-            # tf.summary.text('selectedPridictedIou', tf.dtypes.as_string(selectedPridictedIou))
-            # tf.summary.text('posConfs', tf.dtypes.as_string(selectedPridictedConf))
 
 
             return posLoss + negLoss
@@ -211,9 +185,6 @@ class teacher():
 
         negLoss = - tf.reduce_sum(tf.log(tf.clip_by_value(-topNegScores,1e-8,1.0)))
 
-        # tf.summary.text('posLoss', tf.dtypes.as_string(posLoss))
-        # tf.summary.text('negLoss', tf.dtypes.as_string(negLoss))
-        # tf.summary.text('negetiveMask', tf.dtypes.as_string(negetiveMask))
         return posLoss + negLoss
 
 
@@ -255,19 +226,15 @@ class teacher():
             tf.summary.scalar('confLoss', confidenceLoss)
             tf.summary.scalar('classLoss', classLoss)
             tf.summary.scalar('totalLos', loss)
-            # tf.summary.text('predBoxes',tf.dtypes.as_string(tf.stack([classLoss,nSelectedBoxes])))
+
     def buildOptimizer(self):
         self.optimizer = tf.train.AdamOptimizer(learning_rate= self.lrate, name='adam_optimizer')
 
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
-            # self.train_op = self.optimizer.minimize(self.loss, global_step=self.global_step, name='train_op')
             gradients = self.optimizer.compute_gradients(self.loss)
             self.train_op = self.optimizer.apply_gradients(gradients, global_step=self.global_step, name='train_op')
-            # for gradient, variable in gradients:
-                # if gradient is not None:
-                    # tf.summary.histogram("gradients/" + variable.name, gradient)
-                    # tf.summary.histogram("variables/" + variable.name, variable)
+
     def calculatIOU_single(self,boxes1,boxes2):
         with tf.name_scope('IOU'):
             xc, yc, w, h = tf.split(boxes1, 4, axis=0)
@@ -291,8 +258,6 @@ class teacher():
             areaLabel = lw*lh
             areaPredected = w*h
             IOU = tfe_math.safe_divide(areaIntersection , ((areaLabel + areaPredected) - areaIntersection))
-            # tf.summary.text('IOU',tf.dtypes.as_string(IOU))
-            # tf.summary.text('REdIOU',tf.dtypes.as_string(tf.reduce_sum(IOU,axis=1)))
 
             return tf.reduce_sum(IOU)
 
@@ -319,8 +284,6 @@ class teacher():
             areaLabel = lw*lh
             areaPredected = w*h
             IOU = tfe_math.safe_divide(areaIntersection , ((areaLabel + areaPredected) - areaIntersection))
-            # tf.summary.text('IOU',tf.dtypes.as_string(IOU))
-            # tf.summary.text('REdIOU',tf.dtypes.as_string(tf.reduce_sum(IOU,axis=1)))
 
             return tf.reduce_sum(IOU,axis=-1)
     
@@ -331,9 +294,6 @@ class teacher():
 
             posClassProb = tf.reshape(self.predictions[:,:,1],(-1,nBoxes))
             iouConf = tf.reshape(predConf,(-1,nBoxes))
-
-            # maxConfIndx = tf.argmax(tf.reshape(predClasses[:,:,1],(-1,nBoxes)),axis=1)
-            # maxConfIndx = tf.argmax(tf.reshape(predConf,(-1,nBoxes)),axis=1)
             maxConfIndx = tf.argmax(tf.multiply(posClassProb, iouConf), axis=1)
             batchIndx = tf.range(0,tf.cast(tf.shape(predConf)[0],tf.int64),1,dtype=tf.int64)
             batchConfIndx = tf.stack([batchIndx,maxConfIndx],axis=1)
@@ -359,11 +319,6 @@ class teacher():
 
             self.predectedBox = tf.stack([x,y,w,h],axis=1)
             self.predectedBox = tf.identity(self.predectedBox,name = 'predectedBox')
-
-            # tf.summary.text('encodedPredectedBox', tf.dtypes.as_string(encodedPredectedBox))
-            # tf.summary.text('bestDefaultBoxes', tf.dtypes.as_string(bestDefaultBoxes))
-            # tf.summary.text('self.predectedBox', tf.dtypes.as_string(self.predectedBox))
-            # tf.summary.text('conf', tf.dtypes.as_string(tf.reshape(self.confidences,(-1,nBoxes))))
 
 
     def meanIou(self):
@@ -400,8 +355,6 @@ class teacher():
             try:
                 b =self.sess.run(self.trainBatch)
                 feed={self.input: b[0][:], self.label: b[1][:],self.bbox: np.transpose(b[2:]),self.isTraining:True}
-                # test = self.sess.run([self.test], feed_dict=feed)
-                # print(test)
                 opt = self.sess.run([self.train_op,], feed_dict=feed)
                 summary ,valLose,p  = self.sess.run([self.merged, self.loss,self.predectedBox], feed_dict=feed)
                 self.train_writer.add_summary(summary, counter)
